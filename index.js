@@ -1,17 +1,21 @@
 const express = require('express');
 const cors = require('cors');
 require('dotenv').config();
+const jwt = require('jsonwebtoken');
+const cookieParser = require('cookie-parser')
 const app = express();
 const port = process.env.PORT || 5000;
  
 
 // middle ware 
-app.use(cors());
+app.use(cors({
+  origin: ['http://localhost:5173'],
+  credentials: true
+}));
 app.use(express.json());
-// app.use((req, res, next) => {
-//   res.setHeader("Content-Security-Policy", "default-src 'none'; font-src 'self' https://fonts.gstatic.com; style-src 'self' https://fonts.googleapis.com;");
-//   next();
-// });
+app.use(cookieParser());
+
+
 
 
 const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
@@ -33,8 +37,22 @@ async function run() {
 
     const serviceCollection = client.db('carDoctor').collection('services');
     const bookingCollection = client.db('carDoctor').collection('bookings');
+  
+    // auth related api 
+    app.post('/jwt', async(req, res)=>{
+      const user = req.body;
+      console.log(user);
+      const token = jwt.sign(user, process.env.ACCESS_TOKEN_SECRET, {expiresIn: '1h'})
+      res
+      .cookie('token', token, {
+        httpOnly: true,
+        secure: false,
+        sameSite: 'none'
+      })
+      .send({success : true});
+    })
 
-
+    // services related api 
     app.get('/services', async(req, res) =>{
       const cursor = serviceCollection.find();
       const result = await cursor.toArray();
@@ -54,10 +72,43 @@ async function run() {
     })
 
     // bookings
+
+    app.get('/bookings', async(req, res) =>{
+      // console.log(req.query.email);
+      console.log('tok tok token', req.cookies.token);
+      let query = {};
+      if(req.query?.email){
+        query = {email: req.query.email}
+      }
+      const result = await bookingCollection.find(query).toArray();
+      res.send(result);
+    })
     app.post('/bookings', async(req, res) =>{
       const booking = req.body;
       console.log(booking);
       const result = await bookingCollection.insertOne(booking);
+      res.send(result);
+    })
+
+    app.patch('/bookings/:id', async(req, res) => {
+      const id = req.params.id;
+      const filter = {_id: new ObjectId(id)};
+      const updatedBooking = req.body;
+      console.log(updatedBooking);
+      const updateDoc = {
+        $set: {
+          status : updatedBooking.status
+        },
+      };
+      const result = await bookingCollection.updateOne(filter, updateDoc);
+      res.send(result);
+    })
+
+    // delete booking 
+    app.delete('/bookings/:id', async(req, res) =>{
+      const id = req.params.id;
+      const query = {_id: new ObjectId(id)};
+      const result = await bookingCollection.deleteOne(query);
       res.send(result);
     })
 
@@ -92,3 +143,28 @@ app.get('/', (req, res) =>{
 app.listen(port, () =>{
   console.log(`Car doctor Server is running on port ${port}`);
 })
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
